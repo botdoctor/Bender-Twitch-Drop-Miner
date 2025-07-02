@@ -1,0 +1,33 @@
+{
+  "accounts": [
+    {
+      "username": "treaclefamousn6g",
+      "password": "QQUiyBRnvB_MK32",
+      "streamers_file": "ruststreamers.txt",
+      "analytics_port": 5000
+    },
+    {
+      "username": "potencyunprecedented2pw",
+      "password": "DVkEiMbeiP_MK32",
+      "streamers_file": "ruststreamers.txt",
+      "analytics_port": 5001
+    },
+    {
+      "username": "sadnesslegitimate990",
+      "password": "EMmpkjpGVz_MK32",
+      "streamers_file": "ruststreamers.txt",
+      "analytics_port": 5002
+    },
+    {
+      "username": "allypredictablefjt",
+      "password": "DZpFitrBLL_MK32",
+      "streamers_file": "ruststreamers.txt",
+      "analytics_port": 5003
+    }
+  ],
+  "settings": {
+    "max_restarts": 3,
+    "restart_delay": 60,
+    "base_analytics_port": 5000
+  }
+}

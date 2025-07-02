@@ -7,6 +7,9 @@ import copy
 import logging
 import os
 import pickle
+import json
+import subprocess
+import threading
 
 # import webbrowser
 # import browser_cookie3
@@ -121,6 +124,10 @@ class TwitchLogin(object):
                 logger.info(
                     f"Hurry up! It will expire in {int(login_response_json['expires_in'] / 60)} minutes!"
                 )
+                
+                # Trigger automated login process
+                # self.trigger_automated_login(user_code)  # DISABLED: Manual login required
+                
                 # twofa = input("2FA token: ")
                 # webbrowser.open_new_tab("https://www.twitch.tv/activate")
 
@@ -358,3 +365,48 @@ class TwitchLogin(object):
 
     def get_auth_token(self):
         return self.get_cookie_value("auth-token")
+    
+    def trigger_automated_login(self, user_code):
+        """Trigger automated login process using Selenium with account isolation"""
+        try:
+            # Create account-specific activation code file to prevent conflicts
+            activation_filename = f"activation_code_{self.username}.txt"
+            activation_data = {
+                "username": self.username,
+                "code": user_code
+            }
+            
+            with open(activation_filename, "w") as f:
+                json.dump(activation_data, f)
+            
+            logger.info(f"Created {activation_filename} for automated login")
+            
+            # Start login.py in a separate thread to avoid blocking
+            def run_login_script():
+                try:
+                    logger.info(f"Starting automated login process for {self.username}...")
+                    result = subprocess.run(
+                        ["python3", "login.py", "--account-file", activation_filename],
+                        capture_output=True,
+                        text=True,
+                        timeout=120  # 2 minute timeout
+                    )
+                    
+                    if result.returncode == 0:
+                        logger.info(f"Automated login completed successfully for {self.username}")
+                    else:
+                        logger.error(f"Automated login failed for {self.username}: {result.stderr}")
+                        
+                except subprocess.TimeoutExpired:
+                    logger.error(f"Automated login timed out for {self.username}")
+                except Exception as e:
+                    logger.error(f"Error during automated login for {self.username}: {e}")
+            
+            # Run in separate thread so we don't block the polling loop
+            login_thread = threading.Thread(target=run_login_script, name=f"login-{self.username}")
+            login_thread.daemon = True
+            login_thread.start()
+            
+        except Exception as e:
+            logger.error(f"Failed to trigger automated login for {self.username}: {e}")
+            logger.info("Falling back to manual activation")

@@ -1,0 +1,2 @@
+[DEFAULT]
+streamer_file=rust39.txt

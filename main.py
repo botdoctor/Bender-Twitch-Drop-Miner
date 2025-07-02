@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
+import sys
+import argparse
+from pathlib import Path
 from colorama import Fore
 from TwitchChannelPointsMiner import TwitchChannelPointsMiner
 from TwitchChannelPointsMiner.logger import LoggerSettings, ColorPalette
@@ -14,11 +18,54 @@ from TwitchChannelPointsMiner.classes.Gotify import Gotify
 from TwitchChannelPointsMiner.classes.Settings import Priority, Events, FollowersOrder
 from TwitchChannelPointsMiner.classes.entities.Bet import Strategy, BetSettings, Condition, OutcomeKeys, FilterCondition, DelayMode
 from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, StreamerSettings
-usernamedata = input("What is the username?: ")
-filename = input("Where would you like to pull the streamers from?:")
+
+def get_account_config():
+    """Get account configuration from command line arguments or environment variables"""
+    parser = argparse.ArgumentParser(description="Twitch Channel Points Miner")
+    parser.add_argument("--username", help="Twitch username")
+    parser.add_argument("--streamers-file", help="File containing streamer usernames")
+    parser.add_argument("--analytics-port", type=int, default=5000, help="Analytics server port")
+    parser.add_argument("--workspace", help="Account workspace directory")
+    parser.add_argument("--interactive", action="store_true", help="Interactive mode (prompt for inputs)")
+    
+    args = parser.parse_args()
+    
+    # Get configuration from arguments, environment variables, or interactive input
+    if args.interactive or (not args.username and not os.getenv('ACCOUNT_USERNAME')):
+        usernamedata = input("What is the username?: ")
+        filename = input("Where would you like to pull the streamers from?: ")
+        analytics_port = 5000
+        workspace_dir = None
+    else:
+        usernamedata = args.username or os.getenv('ACCOUNT_USERNAME')
+        filename = args.streamers_file or os.getenv('STREAMERS_FILE', 'ruststreamers.txt')
+        analytics_port = args.analytics_port or int(os.getenv('ANALYTICS_PORT', '5000'))
+        workspace_dir = args.workspace or os.getenv('WORKSPACE_DIR')
+        
+    return usernamedata, filename, analytics_port, workspace_dir
+
+def setup_account_workspace(username, workspace_dir):
+    """Setup account-specific workspace and return paths"""
+    if workspace_dir:
+        # Create workspace directory if it doesn't exist
+        Path(workspace_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Account-specific file paths
+        cookies_file = os.path.join(workspace_dir, "cookies.pkl")
+        logs_dir = os.path.join(workspace_dir, "logs")
+        Path(logs_dir).mkdir(exist_ok=True)
+        
+        return cookies_file, logs_dir
+    else:
+        # Use default locations
+        return f"cookies_{username}.pkl", "logs"
+
+# Get account configuration
+usernamedata, filename, analytics_port, workspace_dir = get_account_config()
+cookies_file, logs_dir = setup_account_workspace(usernamedata, workspace_dir)
 twitch_miner = TwitchChannelPointsMiner(
     username=usernamedata,
-    password="write-your-secure-psw",           # If no password will be provided, the script will ask interactively
+    password=os.getenv('ACCOUNT_PASSWORD', "write-your-secure-psw"),  # Password from environment or interactive
     claim_drops_startup=True,                  # If you want to auto claim all drops from Twitch inventory on the startup
     priority=[                                  # Custom priority in this case for example
         Priority.DROPS,                         # - When we don't have anymore watch streak to catch, wait until all drops are collected over the streamers
@@ -37,49 +84,18 @@ twitch_miner = TwitchChannelPointsMiner(
         emoji=True,                             # On Windows, we have a problem printing emoji. Set to false if you have a problem
         less=False,                             # If you think that the logs are too verbose, set this to True
         colored=True,                           # If you want to print colored text
+        # logs_file parameter doesn't exist in LoggerSettings
         color_palette=ColorPalette(             # You can also create a custom palette color (for the common message).
             STREAMER_online="GREEN",            # Don't worry about lower/upper case. The script will parse all the values.
             streamer_offline="red",             # Read more in README.md
             BET_wiN=Fore.MAGENTA                # Color allowed are: [BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RESET].
         ),
-        telegram=Telegram(                                                          # You can omit or set to None if you don't want to receive updates on Telegram
-            chat_id=123456789,                                                      # Chat ID to send messages @getmyid_bot
-            token="123456789:shfuihreuifheuifhiu34578347",                          # Telegram API token @BotFather
-            events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                    Events.BET_LOSE, Events.CHAT_MENTION],                          # Only these events will be sent to the chat
-            disable_notification=True,                                              # Revoke the notification (sound/vibration)
-        ),
-        discord=Discord(
-            webhook_api="https://discord.com/api/webhooks/1305673224100642877/zLiaMVlkRGxoG5EjKcMw0Ktnx3gjhxTgSomrvQnP8uYVyJtGTRGEToDufvPK_AHtXVad",  # Discord Webhook URL
-            events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                    Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM],                                  # Only these events will be sent to the chat
-        ),
-        webhook=Webhook(
-            endpoint="https://example.com/webhook",                                                                    # Webhook URL
-            method="GET",                                                                   # GET or POST
-            events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                    Events.BET_LOSE, Events.CHAT_MENTION],                                  # Only these events will be sent to the endpoint
-        ),
-        matrix=Matrix(
-            username="twitch_miner",                                                   # Matrix username (without homeserver)
-            password="...",                                                            # Matrix password
-            homeserver="matrix.org",                                                   # Matrix homeserver
-            room_id="...",                                                             # Room ID
-            events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE, Events.BET_LOSE], # Only these events will be sent
-        ),
-        pushover=Pushover(
-            userkey="YOUR-ACCOUNT-TOKEN",                                             # Login to https://pushover.net/, the user token is on the main page
-            token="YOUR-APPLICATION-TOKEN",                                           # Create a application on the website, and use the token shown in your application
-            priority=0,                                                               # Read more about priority here: https://pushover.net/api#priority
-            sound="pushover",                                                         # A list of sounds can be found here: https://pushover.net/api#sounds
-            events=[Events.CHAT_MENTION, Events.DROP_CLAIM],                          # Only these events will be sent
-        ),
-        gotify=Gotify(
-            endpoint="https://example.com/message?token=TOKEN",
-            priority=8,
-            events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                    Events.BET_LOSE, Events.CHAT_MENTION], 
-        )
+        telegram=None,  # Disabled for multi-account to avoid spam
+        discord=None,   # Disabled for multi-account to avoid spam
+        webhook=None,   # Disabled for multi-account to avoid spam
+        matrix=None,    # Disabled for multi-account to avoid spam
+        pushover=None,  # Disabled for multi-account to avoid spam
+        gotify=None     # Disabled for multi-account to avoid spam
     ),
     streamer_settings=StreamerSettings(
         make_predictions=False,                  # If you want to Bet / Make prediction
@@ -115,7 +131,14 @@ twitch_miner = TwitchChannelPointsMiner(
 # For example, if in the mine function you don't provide any value for 'make_prediction' but you have set it on TwitchChannelPointsMiner instance, the script will take the value from here.
 # If you haven't set any value even in the instance the default one will be used
 
-#twitch_miner.analytics(host="127.0.0.1", port=5000, refresh=5, days_ago=7)   # Start the Analytics web-server
+# Enable analytics with account-specific port
+if analytics_port > 0:
+    try:
+        twitch_miner.analytics(host="127.0.0.1", port=analytics_port, refresh=5, days_ago=7)
+        print(f"Analytics server started on port {analytics_port} for account {usernamedata}")
+    except Exception as e:
+        print(f"Failed to start analytics server on port {analytics_port}: {e}")
+        print("Continuing without analytics server...")
 
 
 

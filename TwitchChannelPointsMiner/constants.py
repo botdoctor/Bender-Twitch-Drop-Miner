@@ -50,13 +50,8 @@ class GQLOperations:
         },
     }
     PlaybackAccessToken = {
-        "operationName": "PlaybackAccessToken",
-        "extensions": {
-            "persistedQuery": {
-                "version": 1,
-                "sha256Hash": "3093517e37e4f4cb48906155bcd894150aef92617939236d2508f3375ab732ce",
-            }
-        },
+        "operationName": "PlaybackAccessToken_Template",
+        "query": "query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!, $platform: String!) {  streamPlaybackAccessToken(channelName: $login, params: {platform: $platform, playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isLive) {    value    signature   authorization { isForbidden forbiddenReasonCode }   __typename  }  videoPlaybackAccessToken(id: $vodID, params: {platform: $platform, playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) {    value    signature   __typename  }}",
     }
     VideoPlayerStreamInfoOverlayChannel = {
         "operationName": "VideoPlayerStreamInfoOverlayChannel",
