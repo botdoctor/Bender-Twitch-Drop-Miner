@@ -394,14 +394,14 @@ class Twitch(object):
 
                 streamers_watching = []
                 for prior in priority:
-                    if prior == Priority.ORDER and len(streamers_watching) < 2:
-                        # Get the first 2 items, they are already in order
-                        streamers_watching += streamers_index[:2]
+                    if prior == Priority.ORDER and len(streamers_watching) < 1:
+                        # Get the first item, it is already in order
+                        streamers_watching += streamers_index[:1]
 
                     elif (
                         prior in [Priority.POINTS_ASCENDING,
                                   Priority.POINTS_DESCENDING]
-                        and len(streamers_watching) < 2
+                        and len(streamers_watching) < 1
                     ):
                         items = [
                             {"points": streamers[index].channel_points,
@@ -416,9 +416,9 @@ class Twitch(object):
                             ),
                         )
                         streamers_watching += [item["index"]
-                                               for item in items][:2]
+                                               for item in items][:1]
 
-                    elif prior == Priority.STREAK and len(streamers_watching) < 2:
+                    elif prior == Priority.STREAK and len(streamers_watching) < 1:
                         """
                         Check if we need need to change priority based on watch streak
                         Viewers receive points for returning for x consecutive streams.
@@ -445,14 +445,14 @@ class Twitch(object):
                                 if len(streamers_watching) == 2:
                                     break
 
-                    elif prior == Priority.DROPS and len(streamers_watching) < 2:
+                    elif prior == Priority.DROPS and len(streamers_watching) < 1:
                         for index in streamers_index:
                             if streamers[index].drops_condition() is True:
                                 streamers_watching.append(index)
                                 if len(streamers_watching) == 2:
                                     break
 
-                    elif prior == Priority.SUBSCRIBED and len(streamers_watching) < 2:
+                    elif prior == Priority.SUBSCRIBED and len(streamers_watching) < 1:
                         streamers_with_multiplier = [
                             index
                             for index in streamers_index
@@ -464,13 +464,13 @@ class Twitch(object):
                             ),
                             reverse=True,
                         )
-                        streamers_watching += streamers_with_multiplier[:2]
+                        streamers_watching += streamers_with_multiplier[:1]
 
                 """
-                Twitch has a limit - you can't watch more than 2 channels at one time.
-                We take the first two streamers from the list as they have the highest priority (based on order or WatchStreak).
+                Modified to watch only 1 channel at a time instead of Twitch's default 2.
+                We take the first streamer from the list as it has the highest priority (based on order or WatchStreak).
                 """
-                streamers_watching = streamers_watching[:2]
+                streamers_watching = streamers_watching[:1]
 
                 for index in streamers_watching:
                     # next_iteration = time.time() + 60 / len(streamers_watching)
