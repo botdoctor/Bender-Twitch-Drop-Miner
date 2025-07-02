@@ -442,7 +442,7 @@ class Twitch(object):
                                 and streamers[index].stream.minute_watched < 7
                             ):
                                 streamers_watching.append(index)
-                                if len(streamers_watching) == 2:
+                                if len(streamers_watching) == 1:
                                     break
 
                     elif prior == Priority.DROPS and len(streamers_watching) < 1:
