@@ -358,3 +358,85 @@ class TwitchLogin(object):
 
     def get_auth_token(self):
         return self.get_cookie_value("auth-token")
+    
+    def inject_token(self, access_token, user_id, cookies_file=None):
+        """
+        Inject an access token and user_id directly without going through login flow.
+        This is used for automatic mode with pre-created accounts from database.
+        
+        Args:
+            access_token: OAuth access token from account creation
+            user_id: Twitch user ID
+            cookies_file: Optional path to save the cookies file
+            
+        Returns:
+            True if injection and validation successful, False otherwise
+        """
+        try:
+            # Set the token and user_id directly
+            self.token = access_token
+            self.user_id = str(user_id) if user_id else None
+            
+            # Update session headers with the token
+            self.session.headers.update({"Authorization": f"Bearer {self.token}"})
+            
+            # Create minimal cookie structure
+            self.cookies = [
+                {"name": "auth-token", "value": access_token},
+                {"name": "persistent", "value": str(user_id) if user_id else ""}
+            ]
+            
+            # Save cookies if file path provided
+            if cookies_file:
+                try:
+                    with open(cookies_file, 'wb') as f:
+                        pickle.dump(self.cookies, f)
+                    logger.info(f"Token injected and saved to {cookies_file}")
+                except Exception as e:
+                    logger.error(f"Failed to save injected token to file: {e}")
+            
+            # Validate the token by checking login
+            self.login_check_result = self.__set_user_id()
+            
+            if self.login_check_result:
+                logger.info(f"Successfully injected and validated token for user {self.username}")
+                return True
+            else:
+                logger.error(f"Token injection failed validation for user {self.username}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during token injection: {e}")
+            return False
+    
+    def create_cookies_file(self, access_token, user_id, cookies_file):
+        """
+        Create a cookies pickle file with injected token data.
+        Used for automatic account setup from database.
+        
+        Args:
+            access_token: OAuth access token
+            user_id: Twitch user ID
+            cookies_file: Path to save the cookies file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cookies_data = [
+                {"name": "auth-token", "value": access_token},
+                {"name": "persistent", "value": str(user_id)}
+            ]
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(cookies_file), exist_ok=True)
+            
+            with open(cookies_file, 'wb') as f:
+                pickle.dump(cookies_data, f)
+            
+            logger.info(f"Created cookies file: {cookies_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create cookies file: {e}")
+            return False

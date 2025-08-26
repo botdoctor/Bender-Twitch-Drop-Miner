@@ -86,8 +86,20 @@ class Twitch(object):
             r'window\.__twilightBuildID\s*=\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"'
         )
 
-    def login(self):
-        if not os.path.isfile(self.cookies_file):
+    def login(self, auto_mode=False):
+        """
+        Handle login with support for automatic token injection.
+        
+        Args:
+            auto_mode: If True, skip cookie file checks and assume token is already injected
+        """
+        if auto_mode:
+            # In auto mode, token should already be injected via inject_token()
+            # Just validate that the token is working
+            if not self.twitch_login.check_login():
+                raise Exception("Auto mode login validation failed")
+            logger.info("Auto mode: Using injected token")
+        elif not os.path.isfile(self.cookies_file):
             if self.twitch_login.login_flow():
                 self.twitch_login.save_cookies(self.cookies_file)
         else:
