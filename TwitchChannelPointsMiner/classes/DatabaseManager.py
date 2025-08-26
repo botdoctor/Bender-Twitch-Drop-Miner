@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+# Suppress Supabase/httpx debug logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 class DatabaseManager:
     """
     Manages Twitch account database operations using Supabase.

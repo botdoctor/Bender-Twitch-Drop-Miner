@@ -510,13 +510,19 @@ class Twitch(object):
                             logger.debug(
                                 f"Sent PlaybackAccessToken request for {streamers[index]}")
 
-                            if 'data' not in responsePlaybackAccessToken:
+                            if 'data' not in responsePlaybackAccessToken or responsePlaybackAccessToken["data"] is None:
                                 logger.error(
                                     f"Invalid response from Twitch: {responsePlaybackAccessToken}")
                                 continue
 
                             streamPlaybackAccessToken = responsePlaybackAccessToken["data"].get(
                                 'streamPlaybackAccessToken', {})
+                            
+                            if streamPlaybackAccessToken is None:
+                                logger.error(
+                                    f"streamPlaybackAccessToken is None for {streamers[index].username}")
+                                continue
+                            
                             signature = streamPlaybackAccessToken.get(
                                 "signature")
                             value = streamPlaybackAccessToken.get("value")

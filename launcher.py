@@ -23,9 +23,37 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging based on DEBUG environment variable
+debug_mode = os.getenv("DEBUG", "false").lower() == "true"
+log_level = logging.DEBUG if debug_mode else logging.INFO
+logging.basicConfig(level=log_level)
 logger = logging.getLogger(__name__)
+
+# Suppress noisy debug logs from various libraries unless in debug mode
+if not debug_mode:
+    # Suppress HTTP client logs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("requests.packages.urllib3").setLevel(logging.WARNING)
+    
+    # Suppress Supabase logs
+    logging.getLogger("supabase").setLevel(logging.WARNING)
+    logging.getLogger("gotrue").setLevel(logging.WARNING)
+    logging.getLogger("storage3").setLevel(logging.WARNING)
+    logging.getLogger("realtime").setLevel(logging.WARNING)
+    logging.getLogger("postgrest").setLevel(logging.WARNING)
+    
+    # Suppress WebSocket logs
+    logging.getLogger("websocket").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    
+    # Suppress TwitchChannelPointsMiner debug logs
+    logging.getLogger("TwitchChannelPointsMiner").setLevel(logging.INFO)
+    logging.getLogger("TwitchChannelPointsMiner.classes").setLevel(logging.INFO)
+    logging.getLogger("TwitchChannelPointsMiner.classes.DatabaseManager").setLevel(logging.INFO)
 
 class AutomaticMinerLauncher:
     """Launcher for automatic Twitch miner with database integration."""
@@ -225,22 +253,38 @@ class AutomaticMinerLauncher:
     
     def create_miner_instance(self, username, auto_mode=False):
         """Create a TwitchChannelPointsMiner instance with common settings."""
-        # Get Discord webhook from environment or use default
-        discord_webhook = os.getenv("DISCORD_WEBHOOK", "https://discord.com/api/webhooks/1305673224100642877/zLiaMVlkRGxoG5EjKcMw0Ktnx3gjhxTgSomrvQnP8uYVyJtGTRGEToDufvPK_AHtXVad")
+        # Get debug mode from environment
+        debug_mode = os.getenv("DEBUG", "false").lower() == "true"
+        console_log_level = logging.DEBUG if debug_mode else logging.INFO
+        file_log_level = logging.DEBUG if debug_mode else logging.INFO
+        
+        # Get Discord webhook from environment
+        discord_webhook = os.getenv("DISCORD_WEBHOOK")
         
         # Configure Discord if webhook is provided
         discord_config = None
         if discord_webhook and discord_webhook != "https://discord.com/api/webhooks/your-webhook-url":
-            discord_config = Discord(
-                webhook_api=discord_webhook,
-                events=[
+            # Only send drop-related events when not in debug mode
+            if debug_mode:
+                # In debug mode, send all events for testing
+                events = [
                     Events.DROP_CLAIM,
                     Events.STREAMER_ONLINE,
                     Events.STREAMER_OFFLINE,
                     Events.DROP_STATUS
                 ]
+            else:
+                # In production, only send drop-related events
+                events = [
+                    Events.DROP_CLAIM,
+                    Events.DROP_STATUS
+                ]
+            
+            discord_config = Discord(
+                webhook_api=discord_webhook,
+                events=events
             )
-            print(Fore.GREEN + f"  Discord webhook configured")
+            print(Fore.GREEN + f"  Discord webhook configured (Debug: {debug_mode}, Events: {len(events)})")
         
         return TwitchChannelPointsMiner(
             username=username,
@@ -254,10 +298,10 @@ class AutomaticMinerLauncher:
             disable_ssl_cert_verification=False,
             logger_settings=LoggerSettings(
                 save=True,
-                console_level=logging.INFO,
+                console_level=console_log_level,  # Use dynamic level
                 console_username=True,
                 auto_clear=True,
-                file_level=logging.DEBUG,
+                file_level=file_log_level,  # Use dynamic level
                 emoji=True,
                 less=False,
                 colored=True,

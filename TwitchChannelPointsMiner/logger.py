@@ -285,7 +285,8 @@ def configure_loggers(username, settings):
     logger_queue = queue.Queue(-1)
     queue_handler = QueueHandler(logger_queue)
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    # Set root logger level to match console level to avoid debug spam
+    root_logger.setLevel(settings.console_level)
     # Add the queue handler to the root logger
     # Send log messages to another thread through the queue
     root_logger.addHandler(queue_handler)
