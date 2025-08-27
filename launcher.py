@@ -5,6 +5,8 @@ import logging
 import sys
 import os
 import signal
+import json
+from datetime import datetime, timezone
 from colorama import Fore, init
 from pathlib import Path
 
@@ -152,8 +154,216 @@ class AutomaticMinerLauncher:
             followers_order=FollowersOrder.ASC
         )
     
+    def load_campaign_config(self):
+        """Load campaign configuration from JSON file."""
+        try:
+            with open('campaigns.json', 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            print(Fore.YELLOW + "  campaigns.json not found, creating default...")
+            return {}
+        except json.JSONDecodeError:
+            print(Fore.RED + "  Error reading campaigns.json")
+            return {}
+    
+    def detect_available_campaigns(self):
+        """Auto-detect available campaigns from .txt files."""
+        campaign_config = self.load_campaign_config()
+        available_campaigns = []
+        
+        # Scan for .txt files that exist
+        for filename, config in campaign_config.items():
+            if os.path.isfile(filename):
+                # Get or create campaign in database
+                campaign = self.db_manager.get_campaign_by_name(config['name'])
+                if not campaign:
+                    # Auto-create campaign in database
+                    try:
+                        response = self.db_manager.client.table("campaigns").insert({
+                            "campaign_name": config['name'],
+                            "game_name": config['game'],
+                            "streamer_file": filename,
+                            "total_drops": config['drops'],
+                            "is_active": True
+                        }).execute()
+                        if response.data:
+                            campaign = response.data[0]
+                    except:
+                        pass
+                
+                if campaign:
+                    available_campaigns.append({
+                        'id': campaign['id'],
+                        'campaign_name': config['name'],
+                        'game_name': config['game'],
+                        'streamer_file': filename,
+                        'total_drops': config['drops'],
+                        'expected_drops': config['drops']  # Track expected drops
+                    })
+        
+        return available_campaigns
+    
+    def display_campaign_menu(self, campaigns):
+        """Display campaign selection menu."""
+        print("\n" + "="*50)
+        print(Fore.CYAN + "  Available Campaigns (Auto-Detected)")
+        print("="*50)
+        print()
+        
+        if not campaigns:
+            print(Fore.RED + "  No campaign files found!")
+            print(Fore.YELLOW + "  Add .txt files and configure in campaigns.json")
+            return
+        
+        for idx, campaign in enumerate(campaigns, 1):
+            # Get stats for this campaign
+            stats = self.db_manager.get_campaign_stats(campaign['id'])
+            
+            print(Fore.GREEN + f"  [{idx}] {campaign['campaign_name']} ({campaign['game_name']})")
+            print(Fore.WHITE + f"      File: {campaign['streamer_file']}")
+            print(Fore.YELLOW + f"      Expected drops: {campaign['expected_drops']}")
+            print(Fore.CYAN + f"      Available: {stats['available']} | Completed: {stats['completed']}")
+        
+        print()
+        print(Fore.YELLOW + f"  [A] Account Management")
+        print(Fore.RED + f"  [B] Back to Main Menu")
+        print()
+        print("="*50)
+    
+    def select_campaign(self, campaigns):
+        """Get user's campaign selection."""
+        while True:
+            self.display_campaign_menu(campaigns)
+            
+            if not campaigns:
+                input(Fore.CYAN + "\n  Press Enter to return...")
+                return None
+            
+            choice = input(Fore.CYAN + f"\n  Select option: ").strip().upper()
+            
+            if choice == 'B':
+                return None
+            elif choice == 'A':
+                return "manage_accounts"
+            else:
+                try:
+                    choice_num = int(choice)
+                    if 1 <= choice_num <= len(campaigns):
+                        return campaigns[choice_num - 1]
+                    else:
+                        print(Fore.RED + f"\n  Invalid choice. Please select 1-{len(campaigns)}.")
+                except ValueError:
+                    print(Fore.RED + "\n  Invalid input.")
+    
+    def display_campaign_stats(self, campaign_id, campaign_name):
+        """Display statistics for a specific campaign."""
+        stats = self.db_manager.get_campaign_stats(campaign_id)
+        
+        print("\n" + "="*50)
+        print(Fore.CYAN + f"  Campaign: {campaign_name}")
+        print("="*50)
+        print(Fore.WHITE + f"  Total Accounts: {stats['total_accounts']}")
+        print(Fore.GREEN + f"  Available: {stats['available']}")
+        print(Fore.YELLOW + f"  In Progress: {stats['in_progress']}")
+        print(Fore.CYAN + f"  Partial: {stats['partial']}")
+        print(Fore.GREEN + f"  Completed: {stats['completed']}")
+        print(Fore.WHITE + f"  Not Started: {stats['not_started']}")
+        if stats['sold_with_campaign'] > 0:
+            print(Fore.RED + f"  Sold with this campaign: {stats['sold_with_campaign']}")
+        print("="*50)
+    
+    def manage_accounts_menu(self):
+        """Display account management menu."""
+        accounts = self.db_manager.get_accounts_with_drops(exclude_sold=True)
+        
+        if not accounts:
+            print(Fore.YELLOW + "\n  No accounts with completed campaigns found.")
+            input(Fore.CYAN + "\n  Press Enter to continue...")
+            return
+        
+        while True:
+            print("\n" + "="*50)
+            print(Fore.CYAN + "  Account Management")
+            print("="*50)
+            print()
+            
+            for idx, account in enumerate(accounts[:20], 1):  # Show first 20
+                campaigns_str = ", ".join(account['campaigns_completed'])
+                print(Fore.GREEN + f"  [{idx}] {account['username']}")
+                print(Fore.WHITE + f"      Campaigns: {campaigns_str}")
+                print(Fore.YELLOW + f"      Total drops: {account['total_drops']}")
+            
+            if len(accounts) > 20:
+                print(Fore.WHITE + f"\n  ... and {len(accounts) - 20} more accounts")
+            
+            print()
+            print(Fore.YELLOW + "  [M] Mark account(s) as sold")
+            print(Fore.RED + "  [B] Back")
+            print()
+            print("="*50)
+            
+            choice = input(Fore.CYAN + "\n  Select option: ").strip().upper()
+            
+            if choice == 'B':
+                break
+            elif choice == 'M':
+                self.mark_accounts_sold_menu(accounts)
+            else:
+                print(Fore.RED + "\n  Invalid choice.")
+    
+    def mark_accounts_sold_menu(self, accounts):
+        """Menu for marking accounts as sold."""
+        print("\n" + "="*50)
+        print(Fore.YELLOW + "  Mark Accounts as Sold")
+        print("="*50)
+        print(Fore.RED + "  WARNING: This action cannot be undone!")
+        print(Fore.WHITE + "  Enter account numbers separated by commas (e.g., 1,3,5)")
+        print(Fore.WHITE + "  Or enter 'ALL' to mark all listed accounts as sold")
+        print()
+        
+        selection = input(Fore.CYAN + "  Enter selection (or 'cancel'): ").strip()
+        
+        if selection.lower() == 'cancel':
+            return
+        
+        account_ids = []
+        if selection.upper() == 'ALL':
+            account_ids = [acc['id'] for acc in accounts]
+        else:
+            try:
+                indices = [int(x.strip()) - 1 for x in selection.split(',')]
+                account_ids = [accounts[i]['id'] for i in indices if 0 <= i < len(accounts)]
+            except (ValueError, IndexError):
+                print(Fore.RED + "\n  Invalid selection.")
+                return
+        
+        if not account_ids:
+            print(Fore.RED + "\n  No valid accounts selected.")
+            return
+        
+        # Confirmation
+        print(Fore.YELLOW + f"\n  About to mark {len(account_ids)} account(s) as sold.")
+        confirm = input(Fore.RED + "  Type 'CONFIRM' to proceed: ").strip()
+        
+        if confirm != 'CONFIRM':
+            print(Fore.GREEN + "\n  Operation cancelled.")
+            return
+        
+        # Get reason and notes
+        reason = input(Fore.CYAN + "\n  Reason for disposal (optional): ").strip() or None
+        notes = input(Fore.CYAN + "  Additional notes (optional): ").strip() or None
+        
+        # Mark accounts as sold
+        success_count = 0
+        for account_id in account_ids:
+            if self.db_manager.mark_account_sold(account_id, reason, notes):
+                success_count += 1
+        
+        print(Fore.GREEN + f"\n  Successfully marked {success_count}/{len(account_ids)} accounts as sold.")
+        input(Fore.CYAN + "\n  Press Enter to continue...")
+    
     def run_auto_mode(self):
-        """Run the miner in automatic mode with database integration."""
+        """Run the miner in automatic mode with database integration and campaign selection."""
         print(Fore.GREEN + "\n  Running in Auto Mode")
         print("="*50)
         
@@ -170,22 +380,60 @@ class AutomaticMinerLauncher:
         if cleaned > 0:
             print(Fore.YELLOW + f"  Cleaned up {cleaned} orphaned accounts")
         
-        # Get account statistics
-        stats = self.db_manager.get_account_stats()
-        print(Fore.CYAN + f"\n  Account Status:")
-        print(f"    Available: {stats['available']}")
-        print(f"    In Progress: {stats['in_progress']}")
-        print(f"    Invalid: {stats['invalid']}")
-        
-        if stats['available'] == 0:
-            print(Fore.RED + "\n  No available accounts in database!")
-            print(Fore.YELLOW + "  Please create accounts first or release in-progress accounts.")
+        # Auto-detect available campaigns from files
+        campaigns = self.detect_available_campaigns()
+        if not campaigns:
+            print(Fore.RED + "\n  No campaign files detected!")
+            print(Fore.YELLOW + "  Please add .txt files and configure campaigns.json")
             sys.exit(1)
         
-        # Fetch an available account
-        account = self.db_manager.fetch_available_account()
+        # Campaign selection loop
+        while True:
+            selected = self.select_campaign(campaigns)
+            
+            if selected is None:
+                print(Fore.RED + "\n  Returning to main menu...")
+                return
+            elif selected == "manage_accounts":
+                self.manage_accounts_menu()
+                continue
+            else:
+                campaign = selected
+                break
+        
+        campaign_id = campaign['id']
+        campaign_name = campaign['campaign_name']
+        expected_drops = campaign.get('expected_drops', 0)
+        
+        # Store expected drops for later use
+        self.expected_drops = expected_drops
+        self.current_drops = 0
+        
+        # Display campaign statistics
+        self.display_campaign_stats(campaign_id, campaign_name)
+        
+        print(Fore.YELLOW + f"\n  Target: {expected_drops} drops")
+        print(Fore.CYAN + "  Will auto-complete and exit when target reached")
+        
+        # Check if accounts are available for this campaign
+        stats = self.db_manager.get_campaign_stats(campaign_id)
+        if stats['available'] == 0:
+            print(Fore.RED + f"\n  No available accounts for {campaign_name}!")
+            print(Fore.YELLOW + "  All accounts have either completed this campaign or are in use.")
+            input(Fore.CYAN + "\n  Press Enter to continue...")
+            return
+        
+        # Ask about partial accounts
+        include_partial = False
+        if stats['partial'] > 0:
+            print(Fore.YELLOW + f"\n  Found {stats['partial']} accounts with partial progress.")
+            choice = input(Fore.CYAN + "  Include partial progress accounts? (y/n): ").strip().lower()
+            include_partial = choice == 'y'
+        
+        # Fetch an available account for this campaign
+        account = self.db_manager.fetch_available_account_for_campaign(campaign_id, include_partial)
         if not account:
-            print(Fore.RED + "\n  Failed to fetch an available account.")
+            print(Fore.RED + f"\n  Failed to fetch an available account for {campaign_name}.")
             sys.exit(1)
         
         self.current_account = account
@@ -193,11 +441,23 @@ class AutomaticMinerLauncher:
         
         print(Fore.GREEN + f"\n  Selected account: {username}")
         
-        # Get streamers list
-        streamers = self.get_streamers_file()
+        # Get streamers list - use campaign's streamer file if available
+        if campaign.get('streamer_file') and os.path.isfile(campaign['streamer_file']):
+            print(Fore.GREEN + f"\n  Using campaign streamer file: {campaign['streamer_file']}")
+            with open(campaign['streamer_file'], 'r') as f:
+                streamers = [line.strip() for line in f if line.strip()]
+        else:
+            # Fallback to manual file selection
+            streamers = self.get_streamers_file()
         
         # Create miner instance
         self.miner = self.create_miner_instance(username, auto_mode=True)
+        
+        # Pass database manager and expected drops to miner
+        self.miner.db_manager = self.db_manager
+        self.miner.twitch.db_manager = self.db_manager
+        self.miner.twitch.twitch_miner = self.miner
+        self.db_manager.expected_drops = expected_drops
         
         # Inject token directly
         print(Fore.YELLOW + f"  Injecting token for {username}...")
@@ -221,12 +481,13 @@ class AutomaticMinerLauncher:
         
         print(Fore.GREEN + "  Token injected successfully!")
         
-        # Move account to in_progress table
-        campaign_name = f"Mining {len(streamers)} streamers"
-        if not self.db_manager.move_to_in_progress(account['id'], campaign_name):
+        # Move account to in_progress table with campaign tracking
+        if not self.db_manager.move_to_in_progress_with_campaign(account['id'], campaign_id, expected_drops):
             print(Fore.YELLOW + "  Warning: Failed to move account to in_progress table")
         
         print(Fore.GREEN + f"\n  Starting automatic mining for {username}...")
+        print(Fore.CYAN + f"  Campaign: {campaign_name}")
+        print(Fore.CYAN + f"  Streamers: {len(streamers)}")
         
         # Convert streamer list to Streamer objects
         streamer_objects = [
@@ -248,6 +509,15 @@ class AutomaticMinerLauncher:
             if "ERR_BADAUTH" in str(e) or "401" in str(e):
                 self.db_manager.mark_invalid(account['id'], "Authentication failed during mining")
             else:
+                # Mark campaign as partial if interrupted
+                self.db_manager.client.table("account_campaign_progress") \
+                    .upsert({
+                        "account_id": account['id'],
+                        "campaign_id": campaign_id,
+                        "status": "partial",
+                        "last_progress_update": datetime.now(timezone.utc).isoformat()
+                    }) \
+                    .execute()
                 self.db_manager.release_account(account['id'])
             raise
     

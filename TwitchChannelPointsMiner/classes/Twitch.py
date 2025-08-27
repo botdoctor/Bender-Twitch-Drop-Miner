@@ -64,6 +64,9 @@ class Twitch(object):
         "client_session",
         "client_version",
         "twilight_build_id_pattern",
+        "db_manager",  # For campaign tracking in auto mode
+        "twitch_miner",  # Reference to parent miner
+        "drops_claimed",  # Track drops claimed in current session
     ]
 
     def __init__(self, username, user_agent, password=None):
@@ -85,6 +88,10 @@ class Twitch(object):
         self.twilight_build_id_pattern = re.compile(
             r'window\.__twilightBuildID\s*=\s*"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"'
         )
+        # Initialize campaign tracking attributes
+        self.db_manager = None
+        self.twitch_miner = None
+        self.drops_claimed = 0
 
     def login(self, auto_mode=False):
         """
@@ -406,14 +413,14 @@ class Twitch(object):
 
                 streamers_watching = []
                 for prior in priority:
-                    if prior == Priority.ORDER and len(streamers_watching) < 2:
-                        # Get the first 2 items, they are already in order
-                        streamers_watching += streamers_index[:2]
+                    if prior == Priority.ORDER and len(streamers_watching) < 1:
+                        # Get the first item, it is already in order
+                        streamers_watching += streamers_index[:1]
 
                     elif (
                         prior in [Priority.POINTS_ASCENDING,
                                   Priority.POINTS_DESCENDING]
-                        and len(streamers_watching) < 2
+                        and len(streamers_watching) < 1
                     ):
                         items = [
                             {"points": streamers[index].channel_points,
@@ -428,7 +435,7 @@ class Twitch(object):
                             ),
                         )
                         streamers_watching += [item["index"]
-                                               for item in items][:2]
+                                               for item in items][:1]
 
                     elif prior == Priority.STREAK and len(streamers_watching) < 2:
                         """
@@ -454,14 +461,14 @@ class Twitch(object):
                                 and streamers[index].stream.minute_watched < 7
                             ):
                                 streamers_watching.append(index)
-                                if len(streamers_watching) == 2:
+                                if len(streamers_watching) == 1:
                                     break
 
                     elif prior == Priority.DROPS and len(streamers_watching) < 2:
                         for index in streamers_index:
                             if streamers[index].drops_condition() is True:
                                 streamers_watching.append(index)
-                                if len(streamers_watching) == 2:
+                                if len(streamers_watching) == 1:
                                     break
 
                     elif prior == Priority.SUBSCRIBED and len(streamers_watching) < 2:
@@ -476,13 +483,13 @@ class Twitch(object):
                             ),
                             reverse=True,
                         )
-                        streamers_watching += streamers_with_multiplier[:2]
+                        streamers_watching += streamers_with_multiplier[:1]
 
                 """
-                Twitch has a limit - you can't watch more than 2 channels at one time.
-                We take the first two streamers from the list as they have the highest priority (based on order or WatchStreak).
+                Modified to watch only 1 channel at a time instead of Twitch's default 2.
+                We take the first streamer from the list as it has the highest priority (based on order or WatchStreak).
                 """
-                streamers_watching = streamers_watching[:2]
+                streamers_watching = streamers_watching[:1]
 
                 for index in streamers_watching:
                     # next_iteration = time.time() + 60 / len(streamers_watching)
@@ -901,6 +908,9 @@ class Twitch(object):
         logger.info(
             f"Claim {drop}", extra={"emoji": ":package:", "event": Events.DROP_CLAIM}
         )
+        
+        # Track drop claim for campaign progress
+        self.drops_claimed = getattr(self, 'drops_claimed', 0) + 1
 
         json_data = copy.deepcopy(GQLOperations.DropsPage_ClaimDropRewards)
         json_data["variables"] = {
@@ -919,6 +929,18 @@ class Twitch(object):
                 response["data"]["claimDropRewards"]["status"]
                 in ["ELIGIBLE_FOR_ALL", "DROP_INSTANCE_ALREADY_CLAIMED"]
             ):
+                # Notify database manager if available
+                if hasattr(self, 'db_manager') and self.db_manager:
+                    drops_claimed = getattr(self, 'drops_claimed', 0)
+                    result = self.db_manager.update_campaign_progress(drops_claimed)
+                    
+                    # Check if campaign is complete
+                    if result == "COMPLETE":
+                        logger.info("Campaign completed! Shutting down...")
+                        # Signal to stop mining
+                        self.running = False
+                        if hasattr(self, 'twitch_miner'):
+                            self.twitch_miner.end(None, None)
                 return True
             else:
                 return False

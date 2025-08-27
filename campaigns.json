@@ -1,0 +1,47 @@
+{
+  "rust38.txt": {
+    "drops": 5,
+    "game": "Rust",
+    "name": "Rust 38"
+  },
+  "rust39.txt": {
+    "drops": 5,
+    "game": "Rust",
+    "name": "Rust 39"
+  },
+  "rust40.txt": {
+    "drops": 5,
+    "game": "Rust",
+    "name": "Rust 40"
+  },
+  "rustmas.txt": {
+    "drops": 8,
+    "game": "Rust",
+    "name": "Rust Christmas"
+  },
+  "codgeneral.txt": {
+    "drops": 2,
+    "game": "Call of Duty",
+    "name": "Call of Duty General Streamers"
+  },
+  "finals2.txt": {
+    "drops": 3,
+    "game": "The Finals",
+    "name": "The Finals Defib/Gun/Infuser"
+  },
+  "nba2k.txt": {
+    "drops": 2,
+    "game": "NBA 2K24",
+    "name": "NBA 2K codes"
+  },
+   "pubgmobile.txt": {
+    "drops": 3,
+    "game": "PubGMobile",
+    "name": "PubGMobiletech"
+  },
+  "rl.txt": {
+    "drops": 5,
+    "game": "Rocket League",
+    "name": "Rocket League"
+  }
+}

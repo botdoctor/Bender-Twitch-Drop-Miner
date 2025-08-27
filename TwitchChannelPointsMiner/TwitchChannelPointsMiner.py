@@ -69,6 +69,7 @@ class TwitchChannelPointsMiner:
         "original_streamers",
         "logs_file",
         "queue_listener",
+        "db_manager",  # Added for auto mode database management
     ]
 
     def __init__(
@@ -141,6 +142,9 @@ class TwitchChannelPointsMiner:
 
         self.claim_drops_startup = claim_drops_startup
         self.priority = priority if isinstance(priority, list) else [priority]
+        
+        # Database manager for auto mode (set by launcher)
+        self.db_manager = None
 
         self.streamers: list[Streamer] = []
         self.events_predictions = {}
